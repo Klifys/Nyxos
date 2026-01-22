@@ -1,0 +1,11 @@
+--- client/src/pages/Admin.tsx
++++ client/src/pages/Admin.tsx
+@@ -16,7 +16,7 @@ import {
+ } from "@/components/ui/dialog";
+ import { trpc } from "@/lib/trpc";
+ import { getLoginUrl } from "@/const";
+ import { Loader2, Package, ShoppingBag, Settings, Plus, Edit2, Trash2, CheckCircle, Clock, Truck, AlertCircle } from "lucide-react";
+ import { useLocation } from "wouter";
+-import { useState } from "react";
++import { useState, useEffect } from "react";
+ import { toast } from "sonner";

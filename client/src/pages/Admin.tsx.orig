@@ -1,0 +1,707 @@
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { trpc } from "@/lib/trpc";
+import { getLoginUrl } from "@/const";
+import { Loader2, Package, ShoppingBag, Settings, Plus, Edit2, Trash2, CheckCircle, Clock, Truck, AlertCircle } from "lucide-react";
+import { useLocation } from "wouter";
+import { useState } from "react";
+import { toast } from "sonner";
+
+export default function Admin() {
+  const { user, isAuthenticated } = useAuth();
+  const [, setLocation] = useLocation();
+  const [activeTab, setActiveTab] = useState<"products" | "orders" | "slips" | "settings">("products");
+  
+  const { data: products, isLoading: productsLoading, refetch: refetchProducts } = trpc.products.list.useQuery();
+  const { data: orders, isLoading: ordersLoading } = trpc.orders.getAllOrders.useQuery();
+  const { data: pendingSlips, isLoading: slipsLoading, refetch: refetchSlips } = trpc.paymentSlip.getPending.useQuery();
+  const { data: settings, isLoading: settingsLoading } = trpc.settings.getAll.useQuery();
+  
+  const createProductMutation = trpc.products.create.useMutation();
+  const updateProductMutation = trpc.products.update.useMutation();
+  const deleteProductMutation = trpc.products.delete.useMutation();
+  const updateOrderStatusMutation = trpc.orders.updateStatus.useMutation();
+  const verifySlipMutation = trpc.paymentSlip.verify.useMutation();
+  const updateSettingMutation = trpc.settings.update.useMutation();
+  
+  const [newProduct, setNewProduct] = useState({
+    name: "",
+    description: "",
+    price: "",
+    stock: "",
+    category: "",
+  });
+
+  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    price: "",
+    stock: "",
+    category: "",
+  });
+  
+  const [siteSettings, setSiteSettings] = useState({
+    siteName: "",
+    siteDescription: "",
+    accentColor: "#FF6B5B",
+  });
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <h1 className="text-3xl font-serif font-bold">Admin Access Required</h1>
+          <p className="text-muted-foreground">Please sign in with admin credentials</p>
+          <Button asChild size="lg" className="bg-accent hover:bg-accent/90">
+            <a href={getLoginUrl()}>Sign In</a>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (user?.role !== "admin") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <h1 className="text-3xl font-serif font-bold">Access Denied</h1>
+          <p className="text-muted-foreground">You don't have permission to access the admin panel</p>
+          <Button
+            onClick={() => setLocation("/")}
+            className="bg-accent hover:bg-accent/90"
+          >
+            Back to Home
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const handleCreateProduct = async () => {
+    if (!newProduct.name || !newProduct.price || !newProduct.stock) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    try {
+      await createProductMutation.mutateAsync({
+        name: newProduct.name,
+        description: newProduct.description,
+        price: newProduct.price,
+        stock: parseInt(newProduct.stock),
+        category: newProduct.category,
+      });
+
+      toast.success("Product created successfully!");
+      setNewProduct({
+        name: "",
+        description: "",
+        price: "",
+        stock: "",
+        category: "",
+      });
+      refetchProducts();
+    } catch (error) {
+      toast.error("Failed to create product");
+    }
+  };
+
+  const handleEditProduct = (product: any) => {
+    setEditingProduct(product);
+    setEditForm({
+      name: product.name,
+      description: product.description || "",
+      price: product.price,
+      stock: product.stock,
+      category: product.category || "",
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editForm.name || !editForm.price || !editForm.stock) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    try {
+      await updateProductMutation.mutateAsync({
+        id: editingProduct.id,
+        name: editForm.name,
+        description: editForm.description,
+        price: editForm.price,
+        stock: parseInt(editForm.stock),
+        category: editForm.category,
+      });
+
+      toast.success("Product updated successfully!");
+      setEditingProduct(null);
+      refetchProducts();
+    } catch (error) {
+      toast.error("Failed to update product");
+    }
+  };
+
+  const handleDeleteProduct = async (productId: number) => {
+    if (!confirm("Are you sure you want to delete this product?")) {
+      return;
+    }
+
+    try {
+      await deleteProductMutation.mutateAsync({ id: productId });
+      toast.success("Product deleted successfully!");
+      refetchProducts();
+    } catch (error) {
+      toast.error("Failed to delete product");
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId: number, status: string) => {
+    try {
+      await updateOrderStatusMutation.mutateAsync({
+        orderId,
+        status: status as any,
+      });
+      toast.success("Order status updated!");
+    } catch (error) {
+      toast.error("Failed to update order status");
+    }
+  };
+
+  const handleVerifySlip = async (slipId: number, status: "verified" | "rejected", reason?: string) => {
+    try {
+      await verifySlipMutation.mutateAsync({
+        slipId,
+        status,
+        rejectionReason: reason,
+      });
+      toast.success(`Slip ${status} successfully!`);
+      refetchSlips();
+    } catch (error) {
+      toast.error("Failed to verify slip");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="border-b border-border bg-card/50">
+        <div className="container py-6">
+          <h1 className="text-3xl font-serif font-bold">Admin Dashboard</h1>
+          <p className="text-muted-foreground mt-2">Manage products, orders, payments, and site settings</p>
+        </div>
+      </div>
+
+      <div className="container py-12">
+        {/* Tabs */}
+        <div className="flex gap-4 mb-8 border-b border-border overflow-x-auto">
+          <button
+            onClick={() => setActiveTab("products")}
+            className={`px-4 py-2 font-medium border-b-2 transition whitespace-nowrap ${
+              activeTab === "products"
+                ? "border-accent text-accent"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Package className="w-4 h-4 inline mr-2" />
+            Products
+          </button>
+          <button
+            onClick={() => setActiveTab("orders")}
+            className={`px-4 py-2 font-medium border-b-2 transition whitespace-nowrap ${
+              activeTab === "orders"
+                ? "border-accent text-accent"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4 inline mr-2" />
+            Orders
+          </button>
+          <button
+            onClick={() => setActiveTab("slips")}
+            className={`px-4 py-2 font-medium border-b-2 transition whitespace-nowrap ${
+              activeTab === "slips"
+                ? "border-accent text-accent"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <AlertCircle className="w-4 h-4 inline mr-2" />
+            Payment Slips
+          </button>
+          <button
+            onClick={() => setActiveTab("settings")}
+            className={`px-4 py-2 font-medium border-b-2 transition whitespace-nowrap ${
+              activeTab === "settings"
+                ? "border-accent text-accent"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Settings className="w-4 h-4 inline mr-2" />
+            Settings
+          </button>
+        </div>
+
+        {/* Products Tab */}
+        {activeTab === "products" && (
+          <div className="space-y-8">
+            {/* Create Product Form */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Add New Product</CardTitle>
+                <CardDescription>Create a new lamp product</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Product Name *</Label>
+                    <Input
+                      id="name"
+                      placeholder="e.g., Premium Table Lamp"
+                      value={newProduct.name}
+                      onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Category</Label>
+                    <Input
+                      id="category"
+                      placeholder="e.g., Modern, Classic"
+                      value={newProduct.category}
+                      onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="price">Price (THB) *</Label>
+                    <Input
+                      id="price"
+                      type="number"
+                      placeholder="0.00"
+                      value={newProduct.price}
+                      onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="stock">Stock *</Label>
+                    <Input
+                      id="stock"
+                      type="number"
+                      placeholder="0"
+                      value={newProduct.stock}
+                      onChange={(e) => setNewProduct({ ...newProduct, stock: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Product description..."
+                    value={newProduct.description}
+                    onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+                <Button
+                  className="bg-accent hover:bg-accent/90"
+                  onClick={handleCreateProduct}
+                  disabled={createProductMutation.isPending}
+                >
+                  {createProductMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Product
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Products List */}
+            <div>
+              <h3 className="text-xl font-semibold mb-4">Products ({products?.length || 0})</h3>
+              {productsLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-accent" />
+                </div>
+              ) : products && products.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {products.map((product) => (
+                    <Card key={product.id}>
+                      <CardContent className="pt-6">
+                        <h4 className="font-semibold mb-2">{product.name}</h4>
+                        <div className="space-y-2 text-sm mb-4">
+                          <p className="text-muted-foreground line-clamp-2">{product.description}</p>
+                          <div className="flex justify-between">
+                            <span>Price:</span>
+                            <span className="font-bold text-accent">฿{product.price}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Stock:</span>
+                            <span className="font-bold">{product.stock}</span>
+                          </div>
+                          {product.category && (
+                            <div className="flex justify-between">
+                              <span>Category:</span>
+                              <span className="text-xs bg-muted px-2 py-1 rounded">{product.category}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1"
+                                onClick={() => handleEditProduct(product)}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-md">
+                              <DialogHeader>
+                                <DialogTitle>Edit Product</DialogTitle>
+                                <DialogDescription>Update product information</DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div className="space-y-2">
+                                  <Label>Product Name</Label>
+                                  <Input
+                                    value={editForm.name}
+                                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Category</Label>
+                                  <Input
+                                    value={editForm.category}
+                                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Price (THB)</Label>
+                                  <Input
+                                    type="number"
+                                    value={editForm.price}
+                                    onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Stock</Label>
+                                  <Input
+                                    type="number"
+                                    value={editForm.stock}
+                                    onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Description</Label>
+                                  <Textarea
+                                    value={editForm.description}
+                                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                                    rows={3}
+                                  />
+                                </div>
+                                <Button
+                                  className="w-full bg-accent hover:bg-accent/90"
+                                  onClick={handleSaveEdit}
+                                  disabled={updateProductMutation.isPending}
+                                >
+                                  {updateProductMutation.isPending ? "Saving..." : "Save Changes"}
+                                </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 text-red-600 hover:text-red-700"
+                            onClick={() => handleDeleteProduct(product.id)}
+                            disabled={deleteProductMutation.isPending}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <Package className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
+                    <p className="text-muted-foreground">No products yet</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Orders Tab */}
+        {activeTab === "orders" && (
+          <div className="space-y-4">
+            <h3 className="text-xl font-semibold">Orders ({orders?.length || 0})</h3>
+            {ordersLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-accent" />
+              </div>
+            ) : orders && orders.length > 0 ? (
+              <div className="space-y-4">
+                {orders.map((order) => (
+                  <Card key={order.id}>
+                    <CardContent className="pt-6">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Order Number</p>
+                          <p className="font-mono font-bold text-sm">{order.orderNumber}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Amount</p>
+                          <p className="font-bold text-accent">฿{order.totalAmount}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Status</p>
+                          <p className="font-semibold capitalize text-sm">{order.status}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Date</p>
+                          <p className="text-sm">
+                            {new Date(order.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        {["confirmed", "processing", "shipped", "delivered"].map((status) => (
+                          <Button
+                            key={status}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleUpdateOrderStatus(order.id, status)}
+                            disabled={updateOrderStatusMutation.isPending}
+                            className={order.status === status ? "bg-accent/10 border-accent text-accent" : ""}
+                          >
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                          </Button>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <ShoppingBag className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No orders yet</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* Payment Slips Tab */}
+        {activeTab === "slips" && (
+          <div className="space-y-4">
+            <h3 className="text-xl font-semibold">Pending Payment Slips ({pendingSlips?.length || 0})</h3>
+            {slipsLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-accent" />
+              </div>
+            ) : pendingSlips && pendingSlips.length > 0 ? (
+              <div className="space-y-4">
+                {pendingSlips.map((slip) => (
+                  <Card key={slip.id}>
+                    <CardContent className="pt-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Slip ID</p>
+                          <p className="font-mono font-bold text-sm">#{slip.id}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Status</p>
+                          <p className="font-semibold capitalize text-sm">{slip.status}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Uploaded</p>
+                          <p className="text-sm">
+                            {new Date(slip.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      {slip.imageUrl && (
+                        <div className="mb-4">
+                          <img
+                            src={slip.imageUrl}
+                            alt="Payment slip"
+                            className="max-w-xs max-h-48 rounded border border-border"
+                          />
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1 bg-green-600 hover:bg-green-700"
+                          onClick={() => handleVerifySlip(slip.id, "verified")}
+                          disabled={verifySlipMutation.isPending}
+                        >
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          Verify
+                        </Button>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="flex-1 text-red-600 hover:text-red-700"
+                            >
+                              Reject
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-md">
+                            <DialogHeader>
+                              <DialogTitle>Reject Payment Slip</DialogTitle>
+                              <DialogDescription>Provide a reason for rejection</DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <Textarea
+                                placeholder="Enter rejection reason..."
+                                id="rejectionReason"
+                                rows={3}
+                              />
+                              <Button
+                                className="w-full bg-red-600 hover:bg-red-700"
+                                onClick={() => {
+                                  const reason = (document.getElementById("rejectionReason") as HTMLTextAreaElement)?.value;
+                                  handleVerifySlip(slip.id, "rejected", reason);
+                                }}
+                              >
+                                Reject Slip
+                              </Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No pending payment slips</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* Settings Tab */}
+        {activeTab === "settings" && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Site Customization</CardTitle>
+                <CardDescription>Customize your site appearance and content</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="siteName">Site Name</Label>
+                  <Input
+                    id="siteName"
+                    placeholder="Nyxos"
+                    value={siteSettings.siteName}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, siteName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="siteDescription">Site Description</Label>
+                  <Textarea
+                    id="siteDescription"
+                    placeholder="Describe your lamp shop..."
+                    value={siteSettings.siteDescription}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, siteDescription: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="accentColor">Accent Color</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="accentColor"
+                      type="color"
+                      value={siteSettings.accentColor}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, accentColor: e.target.value })}
+                      className="w-20 h-10"
+                    />
+                    <Input
+                      type="text"
+                      value={siteSettings.accentColor}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, accentColor: e.target.value })}
+                      placeholder="#FF6B5B"
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+                <Button
+                  className="bg-accent hover:bg-accent/90"
+                  onClick={async () => {
+                    try {
+                      if (siteSettings.siteName) {
+                        await updateSettingMutation.mutateAsync({
+                          key: "siteName",
+                          value: siteSettings.siteName,
+                        });
+                      }
+                      if (siteSettings.siteDescription) {
+                        await updateSettingMutation.mutateAsync({
+                          key: "siteDescription",
+                          value: siteSettings.siteDescription,
+                        });
+                      }
+                      if (siteSettings.accentColor) {
+                        await updateSettingMutation.mutateAsync({
+                          key: "accentColor",
+                          value: siteSettings.accentColor,
+                        });
+                      }
+                      toast.success("Settings saved successfully!");
+                    } catch (error) {
+                      toast.error("Failed to save settings");
+                    }
+                  }}
+                  disabled={updateSettingMutation.isPending}
+                >
+                  {updateSettingMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Settings"
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
