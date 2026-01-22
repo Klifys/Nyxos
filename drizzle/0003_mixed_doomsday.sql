@@ -1,0 +1,2 @@
+ALTER TABLE `wallet_transactions` MODIFY COLUMN `status` enum('pending','completed','failed','rejected') NOT NULL DEFAULT 'pending';--> statement-breakpoint
+ALTER TABLE `wallet_transactions` ADD `notes` text;

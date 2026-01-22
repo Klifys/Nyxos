@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `discount` int DEFAULT 0 NOT NULL;
